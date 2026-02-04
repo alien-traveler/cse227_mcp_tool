@@ -1,2 +1,14 @@
 .env
 .claude/
+.DS_Store
+
+# Persistent session files
+.linkedin_context_id
+
+# Output files
+*.json
+!package.json
+
+# Python
+__pycache__/
+*.pyc

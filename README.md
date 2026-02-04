@@ -1,14 +1,19 @@
-# X (Twitter) User Posts Fetcher
+# Social Media Posts Fetcher
 
-Fetch posts from a specific X (Twitter) user by username. Two approaches available:
+Fetch posts from social media profiles (X/Twitter, LinkedIn) using multiple approaches.
 
-1. **API Approach** - Uses official X API v2 (requires API credentials)
-2. **Browserbase Approach** - Scrapes via cloud browser (requires Browserbase account)
+## Supported Platforms
+
+| Platform | Script | Method |
+|----------|--------|--------|
+| X (Twitter) | `get_user_posts.py` | Official API v2 |
+| X (Twitter) | `get_user_posts_browserbase.py` | Browserbase scraping |
+| LinkedIn | `get_linkedin_posts_browserbase.py` | Browserbase scraping |
 
 ## Prerequisites
 
 - Python 3.6+
-- For API approach: X API Bearer Token (https://developer.x.com/)
+- For X API approach: X API Bearer Token (https://developer.x.com/)
 - For Browserbase approach: Browserbase account (https://browserbase.com/)
 
 ## Setup
@@ -22,12 +27,16 @@ cp .env.example .env
 2. Edit `.env` and add your credentials:
 
 ```bash
-# For API approach
+# For X API approach
 X_BEARER_TOKEN=your_bearer_token_here
 
-# For Browserbase approach
+# For Browserbase approach (X and LinkedIn)
 BROWSERBASE_API_KEY=your_api_key_here
 BROWSERBASE_PROJECT_ID=your_project_id_here
+
+# For LinkedIn (auto-login)
+LINKEDIN_EMAIL=your_email@example.com
+LINKEDIN_PASSWORD=your_password_here
 ```
 
 3. For Browserbase approach, install additional dependencies:
@@ -155,3 +164,86 @@ python get_user_posts_browserbase.py elonmusk -o posts.json
 - May be affected by X.com UI changes
 - Rate limited by Browserbase session limits
 - No authentication support (can only see public posts)
+
+---
+
+## LinkedIn: Browserbase (get_linkedin_posts_browserbase.py)
+
+Scrapes posts/activity from LinkedIn profiles using a cloud browser via Browserbase.
+Uses **persistent browser context** to maintain login session across runs.
+
+### How Persistent Sessions Work
+
+1. **First run**: You'll need to login and complete any CAPTCHA/verification manually
+2. **Subsequent runs**: Session is restored automatically, no login required
+
+The context ID is saved to `.linkedin_context_id` file locally.
+
+### Usage
+
+```bash
+# Scrape by username
+python get_linkedin_posts_browserbase.py johndoe
+
+# Scrape by full URL
+python get_linkedin_posts_browserbase.py "https://www.linkedin.com/in/johndoe"
+
+# Scrape company page
+python get_linkedin_posts_browserbase.py "https://www.linkedin.com/company/google"
+
+# Scrape 20 posts
+python get_linkedin_posts_browserbase.py johndoe --max-posts 20
+
+# Save to custom file
+python get_linkedin_posts_browserbase.py johndoe -o johndoe_posts.json
+
+# Reset session (re-authenticate)
+python get_linkedin_posts_browserbase.py --reset-session
+```
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `profile` | LinkedIn username or full profile URL |
+| `--max-posts`, `-n` | Maximum number of posts to scrape (default: 10) |
+| `--output`, `-o` | Output file path (default: linkedin_posts.json) |
+| `--reset-session` | Delete saved session and re-authenticate |
+
+### Output Format
+
+```json
+{
+  "user": {
+    "profile_url": "https://www.linkedin.com/in/johndoe",
+    "username": "johndoe",
+    "name": "John Doe",
+    "headline": "Software Engineer at Company",
+    "location": "San Francisco, CA",
+    "connections": "500+ connections",
+    "followers": "1K followers"
+  },
+  "post_count": 10,
+  "posts": [
+    {
+      "id": "urn:li:activity:123456789",
+      "text": "Post content...",
+      "author": "John Doe",
+      "posted_at": "2d",
+      "metrics": {
+        "likes": "42 likes",
+        "comments": "5 comments",
+        "reposts": "2 reposts"
+      }
+    }
+  ],
+  "scraped_at": "2024-01-15T12:00:00.000Z"
+}
+```
+
+### Limitations
+
+- First run requires manual verification (CAPTCHA, email code, etc.)
+- May be affected by LinkedIn UI changes
+- Rate limited by Browserbase session limits
+- Session may expire after extended periods of inactivity

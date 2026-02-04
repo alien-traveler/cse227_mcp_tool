@@ -257,7 +257,7 @@ def main():
         help="Maximum number of posts to collect (default: 10)"
     )
     parser.add_argument(
-        "--output", "-o", type=str, default=None,
+        "--output", "-o", type=str, default="posts.json",
         help="Output file path (JSON format)"
     )
 
