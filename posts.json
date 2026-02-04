@@ -1,0 +1,129 @@
+{
+  "user": {
+    "username": "elonmusk"
+  },
+  "post_count": 10,
+  "posts": [
+    {
+      "id": "2018784828129243614",
+      "url": "https://x.com/elonmusk/status/2018784828129243614",
+      "text": "Building an interstellar civilization",
+      "created_at": "2026-02-03T20:33:04.000Z",
+      "metrics": {
+        "replies": "3.4K",
+        "retweets": "2.9K",
+        "likes": "20K"
+      },
+      "is_retweet": false
+    },
+    {
+      "id": "1519480761749016577",
+      "url": "https://x.com/elonmusk/status/1519480761749016577",
+      "text": "Next I’m buying Coca-Cola to put the cocaine back in",
+      "created_at": "2022-04-28T00:56:58.000Z",
+      "metrics": {
+        "replies": "169K",
+        "retweets": "757K",
+        "likes": "4.2M"
+      },
+      "is_retweet": false
+    },
+    {
+      "id": "1812258574049157405",
+      "url": "https://x.com/elonmusk/status/1812258574049157405",
+      "text": "",
+      "created_at": "2024-07-13T22:51:28.000Z",
+      "metrics": {
+        "replies": "69K",
+        "retweets": "426K",
+        "likes": "3.2M"
+      },
+      "is_retweet": false
+    },
+    {
+      "id": "1518623997054918657",
+      "url": "https://x.com/elonmusk/status/1518623997054918657",
+      "text": "I hope that even my worst critics remain on Twitter, because that is what free speech means",
+      "created_at": "2022-04-25T16:12:30.000Z",
+      "metrics": {
+        "replies": "155K",
+        "retweets": "390K",
+        "likes": "2.8M"
+      },
+      "is_retweet": false
+    },
+    {
+      "id": "1854026234339938528",
+      "url": "https://x.com/elonmusk/status/1854026234339938528",
+      "text": "The future is gonna be so",
+      "created_at": "2024-11-06T05:01:15.000Z",
+      "metrics": {
+        "replies": "57K",
+        "retweets": "213K",
+        "likes": "2.5M"
+      },
+      "is_retweet": false
+    },
+    {
+      "id": "1519495072802390016",
+      "url": "https://x.com/elonmusk/status/1519495072802390016",
+      "text": "Let’s make Twitter maximum fun!",
+      "created_at": "2022-04-28T01:53:50.000Z",
+      "metrics": {
+        "replies": "101K",
+        "retweets": "202K",
+        "likes": "2.3M"
+      },
+      "is_retweet": false
+    },
+    {
+      "id": "1518677066325053441",
+      "url": "https://x.com/elonmusk/status/1518677066325053441",
+      "text": "Yesss!!!",
+      "created_at": "2022-04-25T19:43:22.000Z",
+      "metrics": {
+        "replies": "130K",
+        "retweets": "362K",
+        "likes": "2.3M"
+      },
+      "is_retweet": false
+    },
+    {
+      "id": "1519495982723084290",
+      "url": "https://x.com/elonmusk/status/1519495982723084290",
+      "text": "Listen, I can’t do miracles ok",
+      "created_at": "2022-04-28T01:57:27.000Z",
+      "metrics": {
+        "replies": "69K",
+        "retweets": "208K",
+        "likes": "2.2M"
+      },
+      "is_retweet": false
+    },
+    {
+      "id": "1854201929519247803",
+      "url": "https://x.com/elonmusk/status/1854201929519247803",
+      "text": "It is morning in America again",
+      "created_at": "2024-11-06T16:39:24.000Z",
+      "metrics": {
+        "replies": "67K",
+        "retweets": "216K",
+        "likes": "2.3M"
+      },
+      "is_retweet": false
+    },
+    {
+      "id": "1585841080431321088",
+      "url": "https://x.com/elonmusk/status/1585841080431321088",
+      "text": "the bird is freed",
+      "created_at": "2022-10-28T03:49:11.000Z",
+      "metrics": {
+        "replies": "123K",
+        "retweets": "352K",
+        "likes": "2.2M"
+      },
+      "is_retweet": false
+    }
+  ],
+  "scraped_at": "2026-02-04T05:15:34.683251Z"
+}
