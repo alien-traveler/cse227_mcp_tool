@@ -8,6 +8,7 @@
 # Output files
 *.json
 !package.json
+elonmusk_media/
 
 # Python
 __pycache__/

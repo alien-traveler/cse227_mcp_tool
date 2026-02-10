@@ -18,13 +18,19 @@ Fetch posts from social media profiles (X/Twitter, LinkedIn) using multiple appr
 
 ## Setup
 
-1. Copy the example environment file:
+1. Activate the conda environment:
+
+```bash
+conda activate test_mcp_tool
+```
+
+2. Copy the example environment file:
 
 ```bash
 cp .env.example .env
 ```
 
-2. Edit `.env` and add your credentials:
+3. Edit `.env` and add your credentials:
 
 ```bash
 # For X API approach
@@ -39,7 +45,7 @@ LINKEDIN_EMAIL=your_email@example.com
 LINKEDIN_PASSWORD=your_password_here
 ```
 
-3. For Browserbase approach, install additional dependencies:
+4. For Browserbase approach, install additional dependencies:
 
 ```bash
 pip install browserbase playwright
@@ -51,17 +57,14 @@ playwright install chromium
 ## Approach 1: API (get_user_posts.py)
 
 ```bash
-# Fetch all tweets from a user (up to 3200)
-python get_user_posts.py elonmusk
+# Basic usage
+python get_user_posts.py elonmusk --max-results 10 -o tweets.json
 
-# Fetch only the 10 most recent tweets
-python get_user_posts.py elonmusk --max-results 10
+# With media download (800 kbps max for videos)
+python get_user_posts.py elonmusk --max-results 10 --download-media -o tweets.json
 
-# Save results to a JSON file
-python get_user_posts.py elonmusk -o tweets.json
-
-# Get raw API response (includes all fields)
-python get_user_posts.py elonmusk --raw -o raw_tweets.json
+# Combined: custom bitrate, media directory, and output
+python get_user_posts.py elonmusk --download-media --max-video-bitrate 400000 --max-results 10 --media-dir my_media -o tweets_media.json
 ```
 
 ### Options
