@@ -4,11 +4,12 @@ Fetch posts from social media profiles (X/Twitter, LinkedIn) using multiple appr
 
 ## Supported Platforms
 
-| Platform | Script | Method |
-|----------|--------|--------|
-| X (Twitter) | `get_user_posts.py` | Official API v2 |
-| X (Twitter) | `get_user_posts_browserbase.py` | Browserbase scraping |
-| LinkedIn | `get_linkedin_posts_browserbase.py` | Browserbase scraping |
+| Platform | Script | Method | Status |
+|----------|--------|--------|--------|
+| X (Twitter) | `get_user_posts_api.py` | Official API v2 | ✅ Active |
+| LinkedIn | `download_linkedin_html_ocr.py` | Browserbase HTML download | ✅ Active |
+| X (Twitter) | `deprecated/get_user_posts_browserbase.py` | Browserbase scraping | ⚠️ Deprecated |
+| LinkedIn | `deprecated/get_linkedin_posts_browserbase.py` | Browserbase scraping | ⚠️ Deprecated |
 
 ## Prerequisites
 
@@ -54,17 +55,19 @@ playwright install chromium
 
 ---
 
-## Approach 1: API (get_user_posts.py)
+## X (Twitter) API Approach (get_user_posts_api.py)
+
+Fetch posts using the official X API v2.
 
 ```bash
 # Basic usage
-python get_user_posts.py elonmusk --max-results 10 -o tweets.json
+python get_user_posts_api.py elonmusk --max-results 10 -o results/tweets.json
 
 # With media download (800 kbps max for videos)
-python get_user_posts.py elonmusk --max-results 10 --download-media -o tweets.json
+python get_user_posts_api.py elonmusk --max-results 10 --download-media -o results/tweets.json
 
 # Combined: custom bitrate, media directory, and output
-python get_user_posts.py elonmusk --download-media --max-video-bitrate 400000 --max-results 10 --media-dir my_media -o tweets_media.json
+python get_user_posts_api.py elonmusk --download-media --max-video-bitrate 400000 --max-results 10 --media-dir my_media -o results/tweets_media.json
 ```
 
 ### Options
@@ -80,7 +83,7 @@ python get_user_posts.py elonmusk --download-media --max-video-bitrate 400000 --
 kbps) |
 | `--media-dir` | Directory to save downloaded media (default: `media`) |
 
-## Output Format
+### Output Format
 
 ```json
 {
@@ -110,7 +113,54 @@ kbps) |
 
 ---
 
-## Approach 2: Browserbase (get_user_posts_browserbase.py)
+## LinkedIn HTML Download (download_linkedin_html_ocr.py)
+
+Downloads LinkedIn profile and activity pages as raw HTML files via Browserbase.
+Designed for later processing with OCR or parsing tools.
+
+### Usage
+
+```bash
+# Download profile and activity pages
+python download_linkedin_html_ocr.py "https://www.linkedin.com/in/johndoe"
+
+# Specify custom output directory
+python download_linkedin_html_ocr.py johndoe --output-dir my_downloads
+
+# Reset session (re-authenticate)
+python download_linkedin_html_ocr.py --reset-session
+```
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `profile` | LinkedIn username or full profile URL |
+| `--output-dir`, `-o` | Output directory for HTML files (default: linkedin_html) |
+| `--reset-session` | Delete saved session and re-authenticate |
+
+### Output
+
+Creates timestamped HTML files:
+- `profile_YYYYMMDD_HHMMSS.html` - Full profile page
+- `activity_YYYYMMDD_HHMMSS.html` - Activity/posts page
+
+### Limitations
+
+- First run requires manual verification (CAPTCHA, email code, etc.)
+- Session may expire after extended periods of inactivity
+- HTML structure may change with LinkedIn UI updates
+
+---
+
+## ⚠️ Deprecated Tools
+
+The following scripts are deprecated but kept for reference:
+
+### deprecated/get_user_posts_browserbase.py
+
+**Status:** ⚠️ Deprecated  
+**Replacement:** Use `get_user_posts_api.py` instead
 
 Scrapes posts directly from X.com using a cloud browser via Browserbase.
 
@@ -118,13 +168,13 @@ Scrapes posts directly from X.com using a cloud browser via Browserbase.
 
 ```bash
 # Scrape 10 posts from a user (default)
-python get_user_posts_browserbase.py elonmusk
+python deprecated/get_user_posts_browserbase.py elonmusk
 
 # Scrape 50 posts
-python get_user_posts_browserbase.py elonmusk --max-posts 50
+python deprecated/get_user_posts_browserbase.py elonmusk --max-posts 50
 
 # Save results to a JSON file
-python get_user_posts_browserbase.py elonmusk -o posts.json
+python deprecated/get_user_posts_browserbase.py elonmusk -o results/posts.json
 ```
 
 ### Options
@@ -174,7 +224,10 @@ python get_user_posts_browserbase.py elonmusk -o posts.json
 
 ---
 
-## LinkedIn: Browserbase (get_linkedin_posts_browserbase.py)
+### deprecated/get_linkedin_posts_browserbase.py
+
+**Status:** ⚠️ Deprecated  
+**Replacement:** Use `download_linkedin_html_ocr.py` instead
 
 Scrapes posts/activity from LinkedIn profiles using a cloud browser via Browserbase.
 Uses **persistent browser context** to maintain login session across runs.
@@ -189,21 +242,20 @@ The context ID is saved to `.linkedin_context_id` file locally.
 ### Usage
 
 ```bash
-
 # Scrape by full URL
-python get_linkedin_posts_browserbase.py "https://www.linkedin.com/in/johndoe"
+python deprecated/get_linkedin_posts_browserbase.py "https://www.linkedin.com/in/johndoe"
 
 # Scrape company page
-python get_linkedin_posts_browserbase.py "https://www.linkedin.com/company/google"
+python deprecated/get_linkedin_posts_browserbase.py "https://www.linkedin.com/company/google"
 
 # Scrape 20 posts
-python get_linkedin_posts_browserbase.py johndoe --max-posts 20
+python deprecated/get_linkedin_posts_browserbase.py johndoe --max-posts 20
 
 # Save to custom file
-python get_linkedin_posts_browserbase.py johndoe -o johndoe_posts.json
+python deprecated/get_linkedin_posts_browserbase.py johndoe -o results/johndoe_posts.json
 
 # Reset session (re-authenticate)
-python get_linkedin_posts_browserbase.py --reset-session
+python deprecated/get_linkedin_posts_browserbase.py --reset-session
 ```
 
 ### Options
@@ -212,7 +264,7 @@ python get_linkedin_posts_browserbase.py --reset-session
 |--------|-------------|
 | `profile` | LinkedIn username or full profile URL |
 | `--max-posts`, `-n` | Maximum number of posts to scrape (default: 10) |
-| `--output`, `-o` | Output file path (default: linkedin_posts.json) |
+| `--output`, `-o` | Output file path (default: results/linkedin_posts.json) |
 | `--reset-session` | Delete saved session and re-authenticate |
 
 ### Output Format

@@ -6,8 +6,7 @@
 .linkedin_context_id
 
 # Output files
-*.json
-!package.json
+results/
 elonmusk_media/
 linkedin_html/
 

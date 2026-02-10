@@ -353,7 +353,7 @@ def main():
     )
     parser.add_argument(
         "--output", "-o", type=str, default=None,
-        help="Output file path (JSON format). If not specified, prints to stdout."
+        help="Output file path (JSON format). If not specified, prints to stdout. Default location: results/<username>_posts.json"
     )
     parser.add_argument(
         "--raw", action="store_true",
@@ -425,7 +425,11 @@ def main():
     json_output = json.dumps(output_data, indent=2, ensure_ascii=False)
 
     if args.output:
-        with open(args.output, "w", encoding="utf-8") as f:
+        # Ensure output directory exists
+        output_path = Path(args.output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(output_path, "w", encoding="utf-8") as f:
             f.write(json_output)
         print(f"\nResults saved to: {args.output}")
     else:

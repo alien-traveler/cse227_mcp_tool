@@ -694,7 +694,7 @@ def main():
         help="Maximum number of posts to collect (default: 10)"
     )
     parser.add_argument(
-        "--output", "-o", type=str, default="linkedin_posts.json",
+        "--output", "-o", type=str, default="results/linkedin_posts.json",
         help="Output file path (JSON format)"
     )
     parser.add_argument(
@@ -729,7 +729,11 @@ def main():
     json_output = json.dumps(result, indent=2, ensure_ascii=False)
 
     if args.output:
-        with open(args.output, "w", encoding="utf-8") as f:
+        # Ensure output directory exists
+        output_path = Path(args.output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(output_path, "w", encoding="utf-8") as f:
             f.write(json_output)
         print(f"\nResults saved to: {args.output}")
     else:
