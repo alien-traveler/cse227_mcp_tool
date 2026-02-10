@@ -9,6 +9,7 @@
 *.json
 !package.json
 elonmusk_media/
+linkedin_html/
 
 # Python
 __pycache__/

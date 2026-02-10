@@ -75,6 +75,10 @@ python get_user_posts.py elonmusk --download-media --max-video-bitrate 400000 --
 | `--max-results`, `-n` | Maximum number of tweets to fetch (default: all available) |
 | `--output`, `-o` | Output file path (JSON format) |
 | `--raw` | Output raw API response instead of formatted data |
+| `--download-media` | Download media (images/videos) associated with tweets |
+| `--max-video-bitrate` | Maximum bitrate for video downloads (default: 800
+kbps) |
+| `--media-dir` | Directory to save downloaded media (default: `media`) |
 
 ## Output Format
 
@@ -185,8 +189,6 @@ The context ID is saved to `.linkedin_context_id` file locally.
 ### Usage
 
 ```bash
-# Scrape by username
-python get_linkedin_posts_browserbase.py johndoe
 
 # Scrape by full URL
 python get_linkedin_posts_browserbase.py "https://www.linkedin.com/in/johndoe"

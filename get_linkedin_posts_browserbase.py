@@ -334,7 +334,7 @@ def scrape_linkedin_profile(profile_url, max_posts=10):
             page.goto(profile_url, wait_until="domcontentloaded", timeout=60000)
 
             # Wait for page to load
-            print("Waiting for page to load...")
+            print("Waiting for profile page to load...")
             time.sleep(5)
 
             # Check if we still hit a login wall (session expired or blocked)
@@ -348,9 +348,22 @@ def scrape_linkedin_profile(profile_url, max_posts=10):
                 print(f"Error: Profile not found at {profile_url}", file=sys.stderr)
                 return None
 
-            # Extract user info
-            user_info = extract_linkedin_user_info(page, profile_url)
+            # Scrape comprehensive profile information
+            print("Scraping profile information...")
+            user_info = scrape_linkedin_profile_page(page, profile_url)
             print(f"Found profile: {user_info.get('name', 'Unknown')}")
+            
+            # Print profile summary
+            if user_info.get('headline'):
+                print(f"  Headline: {user_info['headline']}")
+            if user_info.get('location'):
+                print(f"  Location: {user_info['location']}")
+            if user_info.get('connections'):
+                print(f"  Connections: {user_info['connections']}")
+            if user_info.get('about'):
+                about_preview = user_info['about'][:100] + "..." if len(user_info.get('about', '')) > 100 else user_info.get('about', '')
+                if about_preview:
+                    print(f"  About: {about_preview}")
 
             # Navigate to activity/posts section
             activity_url = get_activity_url(profile_url)
@@ -425,8 +438,11 @@ def get_activity_url(profile_url):
         return f"{profile_url}/recent-activity/all/"
 
 
-def extract_linkedin_user_info(page, profile_url):
-    """Extract user information from LinkedIn profile page."""
+def scrape_linkedin_profile_page(page, profile_url):
+    """
+    Comprehensively scrape LinkedIn profile page for all available information.
+    This extracts profile details before navigating to posts.
+    """
     info = {"profile_url": profile_url}
 
     try:
@@ -483,10 +499,110 @@ def extract_linkedin_user_info(page, profile_url):
         if followers_el.count() > 0:
             info["followers"] = followers_el.inner_text().strip()
 
-    except Exception:
-        pass
+        # Scroll down to load more profile sections
+        print("  Loading profile sections...")
+        page.evaluate("window.scrollBy(0, 800)")
+        time.sleep(2)
+
+        # Try to get About section
+        about_selectors = [
+            '#about ~ div .display-flex.ph5.pv3',
+            '.pv-about-section .pv-about__summary-text',
+            '[data-section="summary"] .display-flex span[aria-hidden="true"]',
+            '.core-section-container__content .display-flex.full-width span[aria-hidden="true"]'
+        ]
+        for selector in about_selectors:
+            about_el = page.locator(selector).first
+            if about_el.count() > 0:
+                about_text = about_el.inner_text().strip()
+                if about_text and len(about_text) > 20:  # Make sure it's substantial content
+                    info["about"] = about_text
+                    break
+
+        # Try to get current position/experience
+        experience_items = []
+        experience_selectors = [
+            '.pvs-list__item--line-separated',
+            '.experience-item',
+            '[data-section="experience"] .pvs-list__item--line-separated'
+        ]
+        
+        for selector in experience_selectors:
+            exp_elements = page.locator(selector).all()
+            if len(exp_elements) > 0:
+                for exp_el in exp_elements[:3]:  # Get top 3 experiences
+                    try:
+                        exp_text = exp_el.inner_text().strip()
+                        if exp_text and len(exp_text) > 10:
+                            experience_items.append(exp_text)
+                    except Exception:
+                        continue
+                if experience_items:
+                    break
+
+        if experience_items:
+            info["experience"] = experience_items
+
+        # Try to get education
+        education_items = []
+        education_selectors = [
+            '[data-section="education"] .pvs-list__item--line-separated',
+            '.education-item',
+            '#education ~ div .pvs-list__item--line-separated'
+        ]
+        
+        for selector in education_selectors:
+            edu_elements = page.locator(selector).all()
+            if len(edu_elements) > 0:
+                for edu_el in edu_elements[:3]:  # Get top 3 education entries
+                    try:
+                        edu_text = edu_el.inner_text().strip()
+                        if edu_text and len(edu_text) > 10:
+                            education_items.append(edu_text)
+                    except Exception:
+                        continue
+                if education_items:
+                    break
+
+        if education_items:
+            info["education"] = education_items
+
+        # Try to get skills (if visible without expanding)
+        skills_items = []
+        skills_selectors = [
+            '[data-section="skills"] .pvs-list__item--line-separated',
+            '.skill-category-entity__name',
+            '#skills ~ div .pvs-list__item--line-separated span[aria-hidden="true"]'
+        ]
+        
+        for selector in skills_selectors:
+            skill_elements = page.locator(selector).all()
+            if len(skill_elements) > 0:
+                for skill_el in skill_elements[:10]:  # Get up to 10 skills
+                    try:
+                        skill_text = skill_el.inner_text().strip()
+                        if skill_text and len(skill_text) > 1 and len(skill_text) < 100:
+                            skills_items.append(skill_text)
+                    except Exception:
+                        continue
+                if skills_items:
+                    break
+
+        if skills_items:
+            info["skills"] = skills_items
+
+    except Exception as e:
+        print(f"  Warning: Error during profile scraping: {str(e)}")
 
     return info
+
+
+def extract_linkedin_user_info(page, profile_url):
+    """
+    Deprecated: Use scrape_linkedin_profile_page instead.
+    Kept for backward compatibility.
+    """
+    return scrape_linkedin_profile_page(page, profile_url)
 
 
 def extract_linkedin_post(post_element):
