@@ -1,6 +1,7 @@
 .env
 .claude/
 .DS_Store
+openapi.json
 
 # Persistent session files
 .linkedin_context_id

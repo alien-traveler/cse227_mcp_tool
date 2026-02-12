@@ -8,6 +8,7 @@ Fetch posts from social media profiles (X/Twitter, LinkedIn) using multiple appr
 |----------|--------|--------|--------|
 | X (Twitter) | `get_user_posts_api.py` | Official API v2 | ✅ Active |
 | LinkedIn | `download_linkedin_html_ocr.py` | Browserbase HTML download | ✅ Active |
+| Google Search | `search_google_serp.py` | Google SERP Service API + HTML archiving | ✅ Active |
 | X (Twitter) | `deprecated/get_user_posts_browserbase.py` | Browserbase scraping | ⚠️ Deprecated |
 | LinkedIn | `deprecated/get_linkedin_posts_browserbase.py` | Browserbase scraping | ⚠️ Deprecated |
 
@@ -44,6 +45,12 @@ BROWSERBASE_PROJECT_ID=your_project_id_here
 # For LinkedIn (auto-login)
 LINKEDIN_EMAIL=your_email@example.com
 LINKEDIN_PASSWORD=your_password_here
+
+# For Google SERP Service
+GOOGLE_SERP_BASE_URL=your_google_serp_base_url_here
+GOOGLE_SERP_API_KEY=your_api_key_here
+# Optional alternative auth
+GOOGLE_SERP_BEARER_TOKEN=your_bearer_token_here
 ```
 
 4. For Browserbase approach, install additional dependencies:
@@ -150,6 +157,44 @@ Creates timestamped HTML files:
 - First run requires manual verification (CAPTCHA, email code, etc.)
 - Session may expire after extended periods of inactivity
 - HTML structure may change with LinkedIn UI updates
+
+---
+
+## Google SERP Person Search (search_google_serp.py)
+
+Search for a person name using your Google SERP service API and save each returned result page as local HTML.
+
+```bash
+# Basic usage (default max results = 10)
+python search_google_serp.py "Elon Musk"
+
+python search_google_serp.py "Joe Biden" -n 3 -o results/smoke_google_serp_joe_biden
+
+# Specify result count and output directory
+python search_google_serp.py "Sundar Pichai" -n 15 -o results/pichai_search
+```
+
+The script strictly follows `openapi.json`:
+- `GET /search` for up to 10 results (`q`, `num`, `start`)
+- `POST /search/paged` for more than 10 results (`total_results` up to 100)
+
+### Dorking Queries
+
+You can pass Google dork-style operators directly in the query string, such as
+`site:`, `intitle:`, `filetype:`, quoted phrases, `OR`, and exclusions (`-term`).
+
+```bash
+# Dorking example (Wikipedia-focused)
+python search_google_serp.py 'site:wikipedia.org ("Sam Altman" OR "Samuel Altman") intitle:Sam' -n 5 -o results/dork_sam_altman_wikipedia
+```
+
+### Output
+
+Creates an output folder with:
+- `api_response.json` - raw search API response
+- `search_results.json` - normalized result metadata + local file paths
+- `index.html` - local summary page linking to downloaded HTML files
+- `html_results/*.html` - fetched pages for each search result URL
 
 ---
 
