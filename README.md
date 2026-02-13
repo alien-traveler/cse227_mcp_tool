@@ -9,6 +9,7 @@ Fetch posts from social media profiles (X/Twitter, LinkedIn) using multiple appr
 | X (Twitter) | `get_user_posts_api.py` | Official API v2 | ✅ Active |
 | LinkedIn | `download_linkedin_html_ocr.py` | Browserbase HTML download | ✅ Active |
 | Google Search | `search_google_serp.py` | Google SERP Service API + HTML archiving | ✅ Active |
+| arXiv | `search_arxiv_and_download.py` | arXiv API query + PDF download | ✅ Active |
 | X (Twitter) | `deprecated/get_user_posts_browserbase.py` | Browserbase scraping | ⚠️ Deprecated |
 | LinkedIn | `deprecated/get_linkedin_posts_browserbase.py` | Browserbase scraping | ⚠️ Deprecated |
 
@@ -195,6 +196,55 @@ Creates an output folder with:
 - `search_results.json` - normalized result metadata + local file paths
 - `index.html` - local summary page linking to downloaded HTML files
 - `html_results/*.html` - fetched pages for each search result URL
+
+---
+
+## arXiv Search + PDF Download (search_arxiv_and_download.py)
+
+Search arXiv by author name or topic, then download PDFs for the first N results.
+
+```bash
+# Search by author
+python search_arxiv_and_download.py --author "Geoffrey Hinton" -n 5
+
+# Search by topic
+python search_arxiv_and_download.py --topic "large language model" -n 5
+
+# Combine author + topic
+python search_arxiv_and_download.py --author "Yoshua Bengio" --topic "diffusion model" -n 5
+```
+
+If you hit arXiv rate limits (`HTTP 429`), use retry/backoff options and a clear User-Agent:
+
+```bash
+python search_arxiv_and_download.py \
+  --author "Geoffrey Hinton" -n 1 \
+  --user-agent "your-name-arxiv-tool/1.0 (mailto:your_email@domain.com)" \
+  --api-delay 3 \
+  --max-retries 6 \
+  --retry-backoff 10
+```
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--author` | Author name (mapped to arXiv `au:` query field) |
+| `--topic` | Topic terms (mapped to arXiv `all:` query field) |
+| `--max-results`, `-n` | Number of results to fetch/download |
+| `--start` | 0-based start index in the result set |
+| `--sort-by` | `relevance`, `lastUpdatedDate`, or `submittedDate` |
+| `--sort-order` | `ascending` or `descending` |
+| `--output-dir`, `-o` | Output directory (default: `results/arxiv_downloads`) |
+| `--no-download` | Search metadata only, skip PDF downloads |
+| `--max-retries` | Retry count for `429`/temporary HTTP errors |
+| `--retry-backoff` | Initial retry delay (seconds), doubles on each retry |
+
+### Output
+
+Creates an output folder with:
+- `metadata.json` - query info, parsed entries, and per-file download status
+- `pdfs/*.pdf` - downloaded papers
 
 ---
 
