@@ -10,6 +10,7 @@ openapi.json
 results/
 elonmusk_media/
 linkedin_html/
+my_media/
 
 # Python
 __pycache__/
