@@ -173,6 +173,9 @@ python search_google_serp.py "Joe Biden" -n 3 -o results/smoke_google_serp_joe_b
 
 # Specify result count and output directory
 python search_google_serp.py "Sundar Pichai" -n 15 -o results/pichai_search
+
+# Print agent-ready prompt bundle (system prompt + few-shot examples)
+python search_google_serp.py "Sam Altman" --print-agent-prompt --agent-max-queries 6
 ```
 
 The script strictly follows `openapi.json`:
@@ -182,12 +185,42 @@ The script strictly follows `openapi.json`:
 ### Dorking Queries
 
 You can pass Google dork-style operators directly in the query string, such as
-`site:`, `intitle:`, `filetype:`, quoted phrases, `OR`, and exclusions (`-term`).
+`site:`, `intext:`, `intitle:`, `inurl:`, `allintext:`, `allinurl:`, `filetype:`,
+quoted phrases, `OR`, `before:/after:`, `numrange:`, and exclusions (`-term`).
 
 ```bash
 # Dorking example (Wikipedia-focused)
 python search_google_serp.py 'site:wikipedia.org ("Sam Altman" OR "Samuel Altman") intitle:Sam' -n 5 -o results/dork_sam_altman_wikipedia
 ```
+
+### Agent Usage (System Prompt + Few-Shot)
+
+When this script is called by an AI agent, use `--print-agent-prompt` to get:
+- a system prompt that explicitly lists supported dork operators and output constraints
+- few-shot examples showing high-signal query generation
+- a user prompt template bound to the target name
+
+This helps stabilize query planning and keeps dork generation consistent.
+
+### Rate Limit Handling
+
+The script now retries temporary failures and rate limits (`429`, `500`, `502`, `503`, `504`)
+with exponential backoff + jitter, and honors `Retry-After` when provided.
+
+```bash
+python search_google_serp.py "Sam Altman" \
+  -n 10 \
+  --max-retries 5 \
+  --retry-backoff 2 \
+  --retry-jitter 0.8 \
+  --api-delay 1.2
+```
+
+Environment variable defaults are supported:
+- `GOOGLE_SERP_MAX_RETRIES`
+- `GOOGLE_SERP_RETRY_BACKOFF`
+- `GOOGLE_SERP_RETRY_JITTER`
+- `GOOGLE_SERP_API_DELAY`
 
 ### Output
 

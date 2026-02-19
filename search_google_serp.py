@@ -5,21 +5,29 @@ Search a target person with the Google SERP service API and save result pages as
 Usage:
     python search_google_serp.py "Elon Musk" --max-results 10
     python search_google_serp.py "Sam Altman" -n 25 -o results/sam_search
+    python search_google_serp.py "Sam Altman" --print-agent-prompt
 
 Environment (via .env file or shell):
     GOOGLE_SERP_BASE_URL: API base URL
     GOOGLE_SERP_API_KEY: API key value (optional)
     GOOGLE_SERP_API_KEY_HEADER: API key header name (default: X-API-Key)
     GOOGLE_SERP_BEARER_TOKEN: Bearer token (optional)
+    GOOGLE_SERP_MAX_RETRIES: default retry count for rate-limited/temporary failures
+    GOOGLE_SERP_RETRY_BACKOFF: initial backoff in seconds
+    GOOGLE_SERP_RETRY_JITTER: random jitter seconds added to retries
+    GOOGLE_SERP_API_DELAY: minimum delay between API attempts (seconds)
 """
 
 import argparse
 import html
 import json
 import os
+import random
 import re
 import sys
-from datetime import datetime
+import time
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urljoin, urlparse
@@ -53,6 +61,277 @@ def load_env_file():
 load_env_file()
 
 
+RETRYABLE_HTTP_CODES = {429, 500, 502, 503, 504}
+
+
+def env_int(name, default):
+    """Read integer env var with safe fallback."""
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
+def env_float(name, default):
+    """Read float env var with safe fallback."""
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        return default
+
+
+GOOGLE_DORK_OPERATORS = [
+    {
+        "operator": '"..."',
+        "description": "Match an exact phrase.",
+        "example": '"OpenAI CEO Sam Altman"',
+    },
+    {
+        "operator": "intext:",
+        "description": "Require term(s) in page body text.",
+        "example": 'intext:"Sam Altman"',
+    },
+    {
+        "operator": "allintext:",
+        "description": "Require all listed terms in page body text.",
+        "example": "allintext:sam altman openai",
+    },
+    {
+        "operator": "site:",
+        "description": "Restrict results to one domain or subdomain.",
+        "example": 'site:linkedin.com/in "Sam Altman"',
+    },
+    {
+        "operator": "intitle:",
+        "description": "Require term(s) in page title.",
+        "example": 'intitle:"Sam Altman" site:news.ycombinator.com',
+    },
+    {
+        "operator": "inurl:",
+        "description": "Require term(s) in URL path.",
+        "example": 'inurl:about "Sam Altman"',
+    },
+    {
+        "operator": "allinurl:",
+        "description": "Require all listed terms in URL.",
+        "example": "allinurl:sam altman profile",
+    },
+    {
+        "operator": "filetype:",
+        "description": "Restrict to document types such as pdf/docx/ppt.",
+        "example": 'filetype:pdf "Sam Altman" resume',
+    },
+    {
+        "operator": "before:/after:",
+        "description": "Constrain results by date range.",
+        "example": '"Sam Altman" after:2023-01-01 before:2025-01-01',
+    },
+    {
+        "operator": "numrange:",
+        "description": "Find pages containing numbers in a range.",
+        "example": '"Sam Altman" numrange:2020-2025',
+    },
+    {
+        "operator": "OR",
+        "description": "Broaden query by adding alternatives.",
+        "example": '"Sam Altman" OR "Samuel Altman"',
+    },
+    {
+        "operator": "-term",
+        "description": "Exclude noisy terms.",
+        "example": '"Sam Altman" -podcast -youtube',
+    },
+    {
+        "operator": "()",
+        "description": "Group boolean logic for precision.",
+        "example": '("Sam Altman" OR "Samuel Altman") (email OR contact)',
+    },
+    {
+        "operator": "*",
+        "description": "Wildcard placeholder in phrase queries.",
+        "example": '"Sam * Altman"',
+    },
+]
+
+FEW_SHOT_DORK_EXAMPLES = [
+    {
+        "input": 'Target: "Sam Altman". Goal: find official profiles and interviews.',
+        "output": {
+            "queries": [
+                'site:linkedin.com/in "Sam Altman"',
+                'site:x.com "Sam Altman" (profile OR bio)',
+                '("Sam Altman" OR "Samuel Altman") (interview OR keynote) -jobs',
+            ],
+            "rationale": "Starts with authoritative profile domains, then broadens to public interviews while excluding job spam.",
+        },
+    },
+    {
+        "input": 'Target: "Andrew Ng". Goal: find publications/slides.',
+        "output": {
+            "queries": [
+                '("Andrew Ng" OR "Andrew Yan-Tak Ng") (paper OR publication) filetype:pdf',
+                'site:stanford.edu "Andrew Ng" (slides OR lecture) filetype:pdf',
+                'site:arxiv.org "Andrew Ng"',
+            ],
+            "rationale": "Uses aliases + filetype filters to bias toward primary documents.",
+        },
+    },
+]
+
+
+def build_agent_system_prompt(max_queries):
+    """Build a system prompt that enforces explicit operator-aware dork generation."""
+    operator_lines = "\n".join(
+        [
+            f"- {item['operator']} {item['description']} Example: {item['example']}"
+            for item in GOOGLE_DORK_OPERATORS
+        ]
+    )
+    return (
+        "You are a Google dork query planner for an authorized OSINT workflow.\n"
+        "Generate focused queries that maximize relevance and minimize noise.\n"
+        "Use the operators below deliberately; do not invent operators.\n\n"
+        f"Operators:\n{operator_lines}\n\n"
+        "Output rules:\n"
+        f"1) Return valid JSON only with keys: queries, rationale.\n"
+        f"2) queries must be a list of 1 to {max_queries} strings.\n"
+        "3) Each query must include at least one operator from the list.\n"
+        "4) Prefer high-signal domains first (official sites, reputable sources).\n"
+        "5) Remove duplicates and overly broad queries.\n"
+        "6) Avoid exploit-seeking patterns (credentials, exposed directories, vulnerability hunting).\n"
+        "7) Prefer stable operators first: quotes, site:, intitle:, inurl:, filetype:, OR, and -term.\n"
+    )
+
+
+def build_agent_prompt_bundle(target_name, max_queries=6):
+    """Return a prompt bundle (system + few-shot + user prompt) for external agents."""
+    clean_target = target_name.strip()
+    return {
+        "system_prompt": build_agent_system_prompt(max_queries=max_queries),
+        "few_shot_examples": FEW_SHOT_DORK_EXAMPLES,
+        "user_prompt": (
+            f'Target: "{clean_target}". '
+            "Create Google dork queries for discovery of high-confidence public sources. "
+            "Prioritize official profiles, interviews, and primary documents."
+        ),
+    }
+
+
+def parse_retry_after_seconds(value):
+    """Parse Retry-After header into seconds."""
+    if not value:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    try:
+        seconds = float(text)
+        return max(0.0, seconds)
+    except ValueError:
+        pass
+    try:
+        when = parsedate_to_datetime(text)
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        delta = (when - datetime.now(timezone.utc)).total_seconds()
+        return max(0.0, delta)
+    except Exception:
+        return None
+
+
+def throttle_request(min_delay_seconds, last_request_at):
+    """Enforce a minimum delay between API attempts."""
+    delay = max(0.0, float(min_delay_seconds or 0.0))
+    if delay > 0 and last_request_at is not None:
+        elapsed = time.monotonic() - last_request_at
+        remaining = delay - elapsed
+        if remaining > 0:
+            time.sleep(remaining)
+    return time.monotonic()
+
+
+def request_json(
+    method,
+    base_url,
+    endpoint,
+    headers,
+    params=None,
+    payload=None,
+    timeout=20,
+    max_retries=3,
+    retry_backoff=2.0,
+    retry_jitter=0.5,
+    min_delay=0.0,
+):
+    """Perform HTTP request with retry/backoff and parse JSON."""
+    base = base_url.rstrip("/") + "/"
+    path = endpoint.lstrip("/")
+    url = urljoin(base, path)
+    req_headers = dict(headers)
+
+    if method.upper() == "GET":
+        query = urlencode(params or {})
+        if query:
+            url = f"{url}?{query}"
+        req = Request(url, headers=req_headers, method="GET")
+    elif method.upper() == "POST":
+        req_headers["Content-Type"] = "application/json"
+        body = json.dumps(payload or {}).encode("utf-8")
+        req = Request(url, headers=req_headers, data=body, method="POST")
+    else:
+        raise ValueError(f"Unsupported method: {method}")
+
+    attempts = max(0, int(max_retries)) + 1
+    last_request_at = None
+
+    for attempt in range(attempts):
+        last_request_at = throttle_request(min_delay, last_request_at)
+        try:
+            with urlopen(req, timeout=timeout) as resp:
+                body = resp.read()
+                charset = resp.headers.get_content_charset() or "utf-8"
+                text = body.decode(charset, errors="replace")
+                return url, json.loads(text)
+        except HTTPError as e:
+            error_body = e.read().decode("utf-8", errors="replace")
+            status_code = int(getattr(e, "code", 0) or 0)
+            can_retry = status_code in RETRYABLE_HTTP_CODES and attempt < attempts - 1
+            if can_retry:
+                retry_after = parse_retry_after_seconds(e.headers.get("Retry-After"))
+                fallback = float(retry_backoff) * (2 ** attempt) + random.uniform(
+                    0.0, max(0.0, float(retry_jitter))
+                )
+                sleep_seconds = retry_after if retry_after is not None else fallback
+                print(
+                    f"Retryable HTTP {status_code} for {url}. "
+                    f"Attempt {attempt + 1}/{attempts}. Sleeping {sleep_seconds:.2f}s..."
+                )
+                time.sleep(max(0.0, sleep_seconds))
+                continue
+            raise RuntimeError(f"HTTP {status_code} for {url}: {error_body[:800]}")
+        except URLError as e:
+            can_retry = attempt < attempts - 1
+            if can_retry:
+                sleep_seconds = float(retry_backoff) * (2 ** attempt) + random.uniform(
+                    0.0, max(0.0, float(retry_jitter))
+                )
+                print(
+                    f"Network error for {url}: {e.reason}. "
+                    f"Attempt {attempt + 1}/{attempts}. Sleeping {sleep_seconds:.2f}s..."
+                )
+                time.sleep(max(0.0, sleep_seconds))
+                continue
+            raise RuntimeError(f"URL error for {url}: {e.reason}")
+        except json.JSONDecodeError as e:
+            raise RuntimeError(f"JSON decode failed for {url}: {e}")
+
+
 def build_auth_headers():
     """Build auth headers from environment variables."""
     headers = {
@@ -72,55 +351,56 @@ def build_auth_headers():
     return headers
 
 
-def request_json_get(base_url, endpoint, params, headers, timeout=20):
+def request_json_get(
+    base_url,
+    endpoint,
+    params,
+    headers,
+    timeout=20,
+    max_retries=3,
+    retry_backoff=2.0,
+    retry_jitter=0.5,
+    min_delay=0.0,
+):
     """Perform GET request and parse JSON."""
-    base = base_url.rstrip("/") + "/"
-    path = endpoint.lstrip("/")
-    query = urlencode(params)
-    url = urljoin(base, path)
-    if query:
-        url = f"{url}?{query}"
-
-    req = Request(url, headers=headers, method="GET")
-    try:
-        with urlopen(req, timeout=timeout) as resp:
-            body = resp.read()
-            charset = resp.headers.get_content_charset() or "utf-8"
-            text = body.decode(charset, errors="replace")
-            return url, json.loads(text)
-    except HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"HTTP {e.code} for {url}: {body[:800]}")
-    except URLError as e:
-        raise RuntimeError(f"URL error for {url}: {e.reason}")
-    except json.JSONDecodeError as e:
-        raise RuntimeError(f"JSON decode failed for {url}: {e}")
+    return request_json(
+        method="GET",
+        base_url=base_url,
+        endpoint=endpoint,
+        params=params,
+        headers=headers,
+        timeout=timeout,
+        max_retries=max_retries,
+        retry_backoff=retry_backoff,
+        retry_jitter=retry_jitter,
+        min_delay=min_delay,
+    )
 
 
-def request_json_post(base_url, endpoint, payload, headers, timeout=20):
+def request_json_post(
+    base_url,
+    endpoint,
+    payload,
+    headers,
+    timeout=20,
+    max_retries=3,
+    retry_backoff=2.0,
+    retry_jitter=0.5,
+    min_delay=0.0,
+):
     """Perform POST request with JSON body and parse JSON response."""
-    base = base_url.rstrip("/") + "/"
-    path = endpoint.lstrip("/")
-    url = urljoin(base, path)
-
-    body = json.dumps(payload).encode("utf-8")
-    req_headers = dict(headers)
-    req_headers["Content-Type"] = "application/json"
-
-    req = Request(url, headers=req_headers, data=body, method="POST")
-    try:
-        with urlopen(req, timeout=timeout) as resp:
-            response_body = resp.read()
-            charset = resp.headers.get_content_charset() or "utf-8"
-            text = response_body.decode(charset, errors="replace")
-            return url, json.loads(text)
-    except HTTPError as e:
-        error_body = e.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"HTTP {e.code} for {url}: {error_body[:800]}")
-    except URLError as e:
-        raise RuntimeError(f"URL error for {url}: {e.reason}")
-    except json.JSONDecodeError as e:
-        raise RuntimeError(f"JSON decode failed for {url}: {e}")
+    return request_json(
+        method="POST",
+        base_url=base_url,
+        endpoint=endpoint,
+        payload=payload,
+        headers=headers,
+        timeout=timeout,
+        max_retries=max_retries,
+        retry_backoff=retry_backoff,
+        retry_jitter=retry_jitter,
+        min_delay=min_delay,
+    )
 
 
 def find_results_list(payload):
@@ -322,6 +602,17 @@ def main():
     )
     parser.add_argument("target_name", help="Person name to search for")
     parser.add_argument(
+        "--print-agent-prompt",
+        action="store_true",
+        help="Print a JSON bundle with system prompt + few-shot examples for dork planning and exit.",
+    )
+    parser.add_argument(
+        "--agent-max-queries",
+        type=int,
+        default=6,
+        help="Maximum number of dork queries allowed in the prompt bundle (default: 6).",
+    )
+    parser.add_argument(
         "--max-results",
         "-n",
         type=int,
@@ -353,14 +644,64 @@ def main():
         default=20,
         help="HTTP timeout in seconds (default: 20)",
     )
+    parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=env_int("GOOGLE_SERP_MAX_RETRIES", 3),
+        help="Retry count for 429/5xx/network errors (default: env GOOGLE_SERP_MAX_RETRIES or 3).",
+    )
+    parser.add_argument(
+        "--retry-backoff",
+        type=float,
+        default=env_float("GOOGLE_SERP_RETRY_BACKOFF", 2.0),
+        help="Initial retry backoff seconds; doubles each retry (default: env GOOGLE_SERP_RETRY_BACKOFF or 2.0).",
+    )
+    parser.add_argument(
+        "--retry-jitter",
+        type=float,
+        default=env_float("GOOGLE_SERP_RETRY_JITTER", 0.5),
+        help="Max random jitter added to retries in seconds (default: env GOOGLE_SERP_RETRY_JITTER or 0.5).",
+    )
+    parser.add_argument(
+        "--api-delay",
+        type=float,
+        default=env_float("GOOGLE_SERP_API_DELAY", 0.0),
+        help="Minimum delay between API attempts in seconds (default: env GOOGLE_SERP_API_DELAY or 0.0).",
+    )
 
     args = parser.parse_args()
+
+    if args.print_agent_prompt:
+        bundle = build_agent_prompt_bundle(
+            target_name=args.target_name,
+            max_queries=max(1, args.agent_max_queries),
+        )
+        print(json.dumps(bundle, indent=2, ensure_ascii=False))
+        return
 
     if args.max_results <= 0:
         print("Error: --max-results must be positive.", file=sys.stderr)
         sys.exit(1)
     if args.start <= 0:
         print("Error: --start must be >= 1.", file=sys.stderr)
+        sys.exit(1)
+    if args.max_retries < 0:
+        print("Error: --max-retries must be >= 0.", file=sys.stderr)
+        sys.exit(1)
+    if args.retry_backoff < 0:
+        print("Error: --retry-backoff must be >= 0.", file=sys.stderr)
+        sys.exit(1)
+    if args.retry_jitter < 0:
+        print("Error: --retry-jitter must be >= 0.", file=sys.stderr)
+        sys.exit(1)
+    if args.api_delay < 0:
+        print("Error: --api-delay must be >= 0.", file=sys.stderr)
+        sys.exit(1)
+    if not args.base_url:
+        print(
+            "Error: missing --base-url (or GOOGLE_SERP_BASE_URL in environment).",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -389,6 +730,10 @@ def main():
                 params=params,
                 headers=headers,
                 timeout=args.timeout,
+                max_retries=args.max_retries,
+                retry_backoff=args.retry_backoff,
+                retry_jitter=args.retry_jitter,
+                min_delay=args.api_delay,
             )
             used_params = params
             used_method = "GET"
@@ -414,6 +759,10 @@ def main():
                 payload=paged_body,
                 headers=headers,
                 timeout=args.timeout,
+                max_retries=args.max_retries,
+                retry_backoff=args.retry_backoff,
+                retry_jitter=args.retry_jitter,
+                min_delay=args.api_delay,
             )
             used_params = paged_body
             used_method = "POST"
@@ -489,6 +838,12 @@ def main():
         "used_search_endpoint": used_endpoint,
         "used_search_url": used_url,
         "used_search_params": used_params,
+        "retry_settings": {
+            "max_retries": args.max_retries,
+            "retry_backoff": args.retry_backoff,
+            "retry_jitter": args.retry_jitter,
+            "api_delay": args.api_delay,
+        },
         "generated_at": datetime.now().isoformat(),
         "results": normalized,
     }
